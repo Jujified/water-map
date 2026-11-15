@@ -1,0 +1,15 @@
+{
+ "projection": "+proj=spilhaus +R=6371008.8",
+ "proj": "9.8.1",
+ "halfWidth": 11812292.951262292,
+ "sizes": [
+  4096,
+  2048
+ ],
+ "elevationOffset": 11000,
+ "floodEncoding": "flood - elevation",
+ "distUnitKm": 4.0,
+ "lonlatGrid": 513,
+ "areaGrid": 512,
+ "source": "ETOPO 2022 v1 60 arc-second (surface + bed), NOAA NCEI"
+}
