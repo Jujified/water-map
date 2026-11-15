@@ -54,3 +54,10 @@ on a 2′ min-pooled copy of the grid, so narrow straits stay open. The Black Se
 
 This is a bathtub model. For rises, a cell is water when its flood level ≤ the chosen level. For drops below 0 m,
 raw elevation is compared instead. There is no isostatic rebound and no change to the ice sheets.
+
+## Hosting
+
+`.github/workflows/pages.yml` builds and deploys `dist/` to GitHub Pages on every push to `main`. It can also be
+started by hand from the Actions tab. One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
+Actions**. The site is then served at `https://<owner>.github.io/water-map/`. Phones load the 2048 textures and
+300k dots automatically.
