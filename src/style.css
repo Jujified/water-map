@@ -197,7 +197,7 @@ dialog form { text-align: right; }
 
 /* ---------- loading ---------- */
 .loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; color: #c9cbe6; font-size: 13px; transition: opacity 0.5s; }
-.loading.done { opacity: 0; pointer-events: none; }
+.loading.done { display: none; }
 .spinner { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.15); border-top-color: #fff; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
