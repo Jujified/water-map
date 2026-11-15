@@ -51,6 +51,7 @@ export function decodeData(renderer: THREE.WebGLRenderer, d: MapData): THREE.Web
       uTerrain: { value: terrain },
       uFlood: { value: flood },
       uOffset: { value: d.meta.elevationOffset },
+      uFloodBias: { value: d.meta.floodBias ?? 0 },
       uDistUnit: { value: d.meta.distUnitKm },
       uSize: { value: n },
     },

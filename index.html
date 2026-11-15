@@ -26,6 +26,18 @@
       <button id="replay" class="ghost ui" hidden>Replay intro</button>
     </div>
 
+    <div class="zoom ui" role="group" aria-label="Map view">
+      <button id="z-in" class="icon" aria-label="Zoom in" title="Zoom in (+)">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="z-out" class="icon" aria-label="Zoom out" title="Zoom out (−)">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <button id="z-reset" class="icon" aria-label="Reset view" title="Reset view (0)">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      </button>
+    </div>
+
     <aside class="legend ui" id="legend" aria-label="Hypsometric histogram">
       <h2>Earth's surface by elevation</h2>
       <p class="sub">Dot area ∝ share of the planet in each 100 m band</p>
@@ -70,8 +82,9 @@
       <p>
         <b>This is a bathtub model.</b> Water fills every cell whose lowest connection to the ocean is below the
         chosen level. It ignores isostatic rebound, changes to the ice sheets themselves, erosion, sedimentation and
-        tides. Enclosed basins like the Caspian stay dry until the rising sea can spill into them. Below 0 m the map
-        uses raw elevation.
+        tides. Present-day lakes and inland seas, including the Caspian, are always water. Dry land below sea level, such as
+        the Caspian Depression or Death Valley, stays dry until the rising sea can spill into it. Below 0 m the map uses raw
+        elevation.
       </p>
       <p>
         <b>Realistic</b> tints land by height above the current water level, with hillshade and a 15° graticule.
@@ -79,7 +92,7 @@
         much of the planet lies at its elevation, so abyssal plains and lowlands get the biggest dots, and peaks and
         trenches the smallest.
       </p>
-      <p class="muted">Drag to pan, scroll or pinch to zoom, double-click to zoom in.</p>
+      <p class="muted">Drag to pan. Scroll, pinch or use the + / − buttons to zoom, and the reset button (or 0) to fit the whole map.</p>
       <form method="dialog"><button>Close</button></form>
     </dialog>
 

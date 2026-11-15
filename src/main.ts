@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
-import { elevationAt, fractionAbove, isMobile, loadData, lonLatAt } from './data';
+import { elevationAt, fractionAbove, isMobile, loadData, lonLatAt, sphereAt } from './data';
 import { decodeData, sphereTexture } from './gpu';
 import { Intro, T_END } from './intro';
 import { Legend } from './legend';
@@ -151,12 +151,28 @@ async function main() {
   $('info-btn').addEventListener('click', () => $<HTMLDialogElement>('info').showModal());
   $('skip').addEventListener('click', () => (introT = T_END));
   $('replay').addEventListener('click', startIntro);
+  const zoomDur = reducedMotion ? 0 : 0.35;
+  const zoomIn = () => view.enabled && view.animateTo(view.targetZoom() * 2, view.cx, view.cy, zoomDur);
+  const zoomOut = () => view.enabled && view.animateTo(view.targetZoom() / 2, view.cx, view.cy, zoomDur);
+  const zoomReset = () => view.enabled && view.animateTo(1, 0, 0, zoomDur);
+  $('z-in').addEventListener('click', zoomIn);
+  $('z-out').addEventListener('click', zoomOut);
+  $('z-reset').addEventListener('click', zoomReset);
+  function updateZoomButtons() {
+    const z = view.targetZoom();
+    $<HTMLButtonElement>('z-in').disabled = z >= 40;
+    $<HTMLButtonElement>('z-out').disabled = z <= 1;
+    $<HTMLButtonElement>('z-reset').disabled = view.isHome();
+  }
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement) return;
     if (e.key === ' ' && introT >= T_END) {
       e.preventDefault();
       setPlaying(!playing);
     } else if (e.key === 'Escape' && introT < T_END) introT = T_END;
+    else if (e.key === '+' || e.key === '=') zoomIn();
+    else if (e.key === '-' || e.key === '_') zoomOut();
+    else if (e.key === '0') zoomReset();
   });
 
   let cursor: [number, number] | null = null;
@@ -236,6 +252,9 @@ async function main() {
       view.enabled = true;
       $('replay').hidden = false;
     }
+
+    view.tick(dt);
+    updateZoomButtons();
 
     // sweep
     if (playing) {
@@ -317,6 +336,7 @@ async function main() {
       skipIntro: () => (introT = T_END),
       fps: () => fps.value,
       above: () => fractionAbove(data.stats, level),
+      zoom: () => view.zoom,
       isWater: (lon: number, lat: number) => isWaterAt(lon, lat),
       ready: true,
     },
@@ -337,15 +357,33 @@ async function main() {
         bi = i;
       }
     }
-    const u = (bi % g) / (g - 1);
-    const v = 1 - Math.floor(bi / g) / (g - 1);
+    // refine within the neighbouring grid cells to ~1/64 of a cell
+    let u = (bi % g) / (g - 1);
+    let v = 1 - Math.floor(bi / g) / (g - 1);
+    const cell = 1 / (g - 1);
+    const [u0, v0] = [u, v];
+    for (let a = -64; a <= 64; a++) {
+      for (let b = -64; b <= 64; b++) {
+        const uu = u0 + (a / 64) * cell;
+        const vv = v0 + (b / 64) * cell;
+        if (uu < 0 || uu > 1 || vv < 0 || vv > 1) continue;
+        const s = sphereAt(data, uu, vv);
+        const dd = s[0] * t[0] + s[1] * t[1] + s[2] * t[2];
+        if (dd > best) {
+          best = dd;
+          u = uu;
+          v = vv;
+        }
+      }
+    }
     const n = data.size;
     const px = new Uint16Array(4);
     renderer.readRenderTargetPixels(dataRT, Math.min(n - 1, Math.round(u * n)), Math.min(n - 1, Math.round(v * n)), 1, 1, px);
     const elev = THREE.DataUtils.fromHalfFloat(px[0]);
     const flood = THREE.DataUtils.fromHalfFloat(px[1]);
-    const water = level >= 0 ? flood <= level : elev <= level;
-    return { u, v, elev, flood, water };
+    const lake = flood < -10000 && elev > -10000;
+    const water = level >= 0 ? flood <= level : Math.min(elev, flood) <= level;
+    return { u, v, elev, flood, water, lake };
   }
 }
 

@@ -1,7 +1,9 @@
 // Visual + behavioural verification with Playwright.
 //   npm run build && npm run verify
 // Starts `vite preview`, screenshots both modes at 0 m, and checks:
-//   - Caspian basin stays dry at +10 m
+//   - Caspian depression stays dry at +10 m (the sea itself is a lake)
+//   - present-day lakes are water at 0 m and at -120 m
+//   - the zoom buttons zoom in, out and reset
 //   - Bering land bridge is exposed at -120 m (and submerged at 0 m)
 //   - percent of Earth above water at 0 m is about 29 %
 //   - frame rate while the slider is being dragged
@@ -22,6 +24,8 @@ await new Promise((res, rej) => {
 });
 
 const base = `http://localhost:${PORT}/`;
+// Caspian Depression lowlands: below sea level, dry, not part of the lake
+const CASPIAN_DEPRESSION = [[46.5, 44.0], [46.75, 44.0], [46.25, 44.25]];
 const results = [];
 const check = (name, ok, detail) => {
   results.push({ name, ok, detail });
@@ -61,11 +65,20 @@ try {
   const above0 = await wm('above');
   check('surface above water at 0 m ≈ 29 %', Math.abs(above0 * 100 - 29.2) < 1.0, `${(above0 * 100).toFixed(2)} %`);
 
-  // Caspian Sea floor (deep south basin) and northern shallows
+  // Caspian: the sea is a present-day lake; the dry depression around it
+  // (below sea level, not connected to the ocean) must stay dry at +10 m
   await wm('setLevel', 10);
   await page.waitForTimeout(200);
-  const casp = [await wm('isWater', 51.0, 39.5), await wm('isWater', 50.0, 42.5), await wm('isWater', 51.5, 45.5)];
-  check('Caspian basin dry at +10 m', casp.every((c) => !c.water), JSON.stringify(casp.map((c) => [c.elev.toFixed(0), c.flood.toFixed(0)])));
+  const caspSea = [await wm('isWater', 51.0, 39.5), await wm('isWater', 50.0, 42.5)];
+  check('Caspian Sea shown as a lake', caspSea.every((c) => c.lake && c.water), JSON.stringify(caspSea.map((c) => [c.elev.toFixed(0), c.lake])));
+  const caspDry = [];
+  for (const [lon, lat] of CASPIAN_DEPRESSION) caspDry.push(await wm('isWater', lon, lat));
+  check('Caspian depression dry at +10 m', caspDry.every((c) => !c.water && c.elev < 10), JSON.stringify(caspDry.map((c) => [c.elev.toFixed(0), c.flood.toFixed(0)])));
+  await wm('setLevel', 0);
+  const lakes0 = [await wm('isWater', -87.5, 47.7), await wm('isWater', 108.0, 53.5), await wm('isWater', 33.0, -1.0)];
+  await wm('setLevel', -120);
+  const lakesLow = [await wm('isWater', -87.5, 47.7), await wm('isWater', 108.0, 53.5), await wm('isWater', 33.0, -1.0)];
+  check('Superior, Baikal, Victoria are water at 0 m and −120 m', [...lakes0, ...lakesLow].every((c) => c.water));
   await page.screenshot({ path: `${OUT}realistic-+10m.png` });
 
   // Bering Strait, the centre of the land bridge
@@ -82,6 +95,26 @@ try {
   await page.screenshot({ path: `${OUT}abstract--120m.png` });
   await open('mode=abstract&level=66');
   await page.screenshot({ path: `${OUT}abstract-+66m.png` });
+
+  // zoom buttons
+  await open('mode=realistic&level=0');
+  // software GL renders slowly, so wait for the animation to land instead of a fixed time
+  const settle = (z) => page.waitForFunction((t) => Math.abs(window.__waterMap.zoom() - t) < 1e-3, z);
+  const z0 = await wm('zoom');
+  await page.click('#z-in');
+  await settle(2);
+  const z1 = await wm('zoom');
+  await page.click('#z-out');
+  await settle(1);
+  const z2 = await wm('zoom');
+  await page.click('#z-in');
+  await page.click('#z-in');
+  await settle(4);
+  await page.screenshot({ path: `${OUT}realistic-zoomed.png` });
+  await page.click('#z-reset');
+  await settle(1);
+  const z3 = await wm('zoom');
+  check('zoom buttons', z0 === 1 && Math.abs(z1 - 2) < 0.01 && Math.abs(z2 - 1) < 0.01 && z3 === 1, `${z0} → ${z1.toFixed(2)} → ${z2.toFixed(2)} → reset ${z3}`);
 
   // slider drag fps (software GL here, so this is a lower bound)
   for (const mode of ['realistic', 'abstract']) {

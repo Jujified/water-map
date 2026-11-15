@@ -7,7 +7,9 @@
   2048
  ],
  "elevationOffset": 11000,
- "floodEncoding": "flood - elevation",
+ "floodEncoding": "flood - elevation + floodBias; lakes have flood = lakeLevel",
+ "floodBias": 32768,
+ "lakeLevel": -11000.0,
  "distUnitKm": 4.0,
  "lonlatGrid": 513,
  "areaGrid": 512,
