@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Real topography and bathymetry in the Spilhaus projection with an adjustable sea level." />
+    <title>Spilhaus Water Level</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233c3fc2'/%3E%3Ccircle cx='12' cy='13' r='5' fill='%23e0636a'/%3E%3Ccircle cx='21' cy='20' r='4' fill='%23cfe6f3'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="loading" class="loading"><div class="spinner"></div><p id="loading-msg">Loading…</p></div>
+
+    <header class="hud ui" aria-live="polite">
+      <h1>Spilhaus <span>World Ocean</span></h1>
+      <dl class="readout">
+        <div><dt>Water level</dt><dd id="r-level">0 m</dd></div>
+        <div><dt>Above water</dt><dd id="r-above">—</dd></div>
+        <div class="cursor"><dt>Cursor</dt><dd id="r-cursor">—</dd></div>
+      </dl>
+    </header>
+
+    <div class="intro-buttons">
+      <button id="skip" class="ghost">Skip intro</button>
+      <button id="replay" class="ghost ui" hidden>Replay intro</button>
+    </div>
+
+    <aside class="legend ui" id="legend" aria-label="Hypsometric histogram">
+      <h2>Earth's surface by elevation</h2>
+      <p class="sub">Dot area ∝ share of the planet in each 100 m band</p>
+      <div id="legend-host"></div>
+    </aside>
+
+    <section class="controls ui" aria-label="Controls">
+      <div class="row top">
+        <div class="seg" role="radiogroup" aria-label="Render mode">
+          <button id="m-real" role="radio" aria-checked="true">Realistic</button>
+          <button id="m-abs" role="radio" aria-checked="false">Abstract</button>
+        </div>
+        <div class="presets">
+          <button data-level="-120" title="Last Glacial Maximum, ~20,000 years ago">LGM <b>−120 m</b></button>
+          <button data-level="0">Today <b>0 m</b></button>
+          <button data-level="66" title="All land ice melted">Ice-free <b>+66 m</b></button>
+        </div>
+        <div class="actions">
+          <button id="play" class="icon" aria-label="Play sweep" title="Sweep the water level">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path id="play-icon" d="M7 5v14l12-7z" fill="currentColor"/></svg>
+          </button>
+          <button id="info-btn" class="icon" aria-label="About this map" title="About">
+            <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 10.5v6M12 7.2v.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="row slider-row">
+        <span class="lim" id="s-min">−200 m</span>
+        <input id="slider" type="range" min="-200" max="300" step="1" value="0" aria-label="Water level in metres" />
+        <span class="lim" id="s-max">+300 m</span>
+        <label class="full"><input type="checkbox" id="full" /> Full range</label>
+      </div>
+    </section>
+
+    <dialog id="info">
+      <h2>About this map</h2>
+      <p>
+        Global topography and bathymetry from <b>ETOPO 2022</b> (60 arc-second, NOAA NCEI), drawn in the
+        <b>Spilhaus projection</b>: an oblique Adams World in a Square II that puts the connected
+        world ocean in the middle and cuts through the continents instead.
+      </p>
+      <p>
+        <b>This is a bathtub model.</b> Water fills every cell whose lowest connection to the ocean is below the
+        chosen level. It ignores isostatic rebound, changes to the ice sheets themselves, erosion, sedimentation and
+        tides. Enclosed basins like the Caspian stay dry until the rising sea can spill into them. Below 0 m the map
+        uses raw elevation.
+      </p>
+      <p>
+        <b>Realistic</b> tints land by height above the current water level, with hillshade and a 15° graticule.
+        <b>Abstract</b> draws about a million dots, each standing for the same area of Earth. A dot's size follows how
+        much of the planet lies at its elevation, so abyssal plains and lowlands get the biggest dots, and peaks and
+        trenches the smallest.
+      </p>
+      <p class="muted">Drag to pan, scroll or pinch to zoom, double-click to zoom in.</p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

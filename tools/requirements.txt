@@ -1,0 +1,6 @@
+numpy
+scipy
+pyproj>=3.7  # bundles PROJ >= 9.6 (spilhaus)
+rasterio
+scikit-image
+pillow
