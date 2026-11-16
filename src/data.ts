@@ -4,6 +4,8 @@ export interface Meta {
   halfWidth: number;
   sizes: number[];
   elevationOffset: number;
+  floodBias?: number;
+  lakeLevel?: number;
   distUnitKm: number;
   lonlatGrid: number;
   areaGrid: number;

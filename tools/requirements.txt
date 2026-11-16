@@ -3,4 +3,5 @@ scipy
 pyproj>=3.7  # bundles PROJ >= 9.6 (spilhaus)
 rasterio
 scikit-image
+numba  # full-resolution priority flood (falls back to 2x pooled reconstruction)
 pillow

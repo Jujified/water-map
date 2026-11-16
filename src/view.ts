@@ -10,6 +10,7 @@ export class View {
   height = 1;
   enabled = false;
   onChange?: () => void;
+  private anim: { from: [number, number, number]; to: [number, number, number]; t: number; dur: number } | null = null;
   private readonly tanHalf = Math.tan(THREE.MathUtils.degToRad(28 / 2));
 
   resize(w: number, h: number) {
@@ -75,8 +76,43 @@ export class View {
   }
 
   reset() {
+    this.anim = null;
     this.cx = this.cy = 0;
     this.zoom = 1;
+    this.apply();
+  }
+
+  /** Smoothly move to a zoom level / centre (used by the buttons). */
+  animateTo(zoom: number, cx = this.cx, cy = this.cy, dur = 0.35) {
+    zoom = Math.min(40, Math.max(1, zoom));
+    if (dur <= 0) {
+      this.anim = null;
+      Object.assign(this, { zoom, cx, cy });
+      this.apply();
+      return;
+    }
+    this.anim = { from: [this.zoom, this.cx, this.cy], to: [zoom, cx, cy], t: 0, dur };
+  }
+
+  /** Target zoom of any running animation (so repeated clicks compound). */
+  targetZoom(): number {
+    return this.anim ? this.anim.to[0] : this.zoom;
+  }
+
+  isHome(): boolean {
+    return this.targetZoom() <= 1.0001 && Math.abs(this.cx) < 1e-4 && Math.abs(this.cy) < 1e-4 && !this.anim;
+  }
+
+  tick(dt: number) {
+    const a = this.anim;
+    if (!a) return;
+    a.t = Math.min(1, a.t + dt / a.dur);
+    const k = 1 - Math.pow(1 - a.t, 3);
+    // interpolate zoom geometrically so the motion feels even
+    this.zoom = a.from[0] * Math.pow(a.to[0] / a.from[0], k);
+    this.cx = a.from[1] + (a.to[1] - a.from[1]) * k;
+    this.cy = a.from[2] + (a.to[2] - a.from[2]) * k;
+    if (a.t >= 1) this.anim = null;
     this.apply();
   }
 
@@ -89,6 +125,7 @@ export class View {
     };
     el.addEventListener('pointerdown', (e) => {
       if (!this.enabled) return;
+      this.anim = null;
       el.setPointerCapture(e.pointerId);
       pts.set(e.pointerId, rel(e));
       if (pts.size === 2) {
@@ -125,6 +162,7 @@ export class View {
       (e) => {
         if (!this.enabled) return;
         e.preventDefault();
+        this.anim = null;
         const p = rel(e);
         const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
         this.zoomAt(p.x, p.y, Math.exp(-dy * 0.0015));

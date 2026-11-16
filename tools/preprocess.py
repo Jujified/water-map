@@ -18,8 +18,10 @@ scikit-image, pillow.
 Outputs (all in Spilhaus map space, row 0 = top / +y, column 0 = left / -x):
   terrain_{N}.png   RGB: R,G = elevation (uint16 big-endian, metres + OFFSET),
                          B = ice fraction (0..255)
-  flood_{N}.png     RGB: R,G = flood level minus elevation (uint16 metres, >= 0;
-                         compresses far better than the raw level), B = distance inland
+  flood_{N}.png     RGB: R,G = flood level minus elevation + 32768 (uint16 metres;
+                         compresses far better than the raw level; present-day
+                         lakes have flood = -11000, i.e. always water),
+                         B = distance inland
                          from the present-day ocean in units of DIST_UNIT_KM
   lonlat.bin        513x513 float32 (lon, lat) pairs at grid vertices
   area.bin          512x512 float32 relative true area per map cell (max = 1)
@@ -45,6 +47,9 @@ OFFSET = 11000  # metres added before uint16 packing
 DIST_UNIT_KM = 4.0
 SPILHAUS = "+proj=spilhaus +R=6371008.8"
 GRID = 513  # lon/lat lookup vertices per side
+LAKE = -11000.0  # flood level marking present-day lakes (always water)
+FLOOD_BIAS = 32768  # flood is stored as (flood - elevation) + FLOOD_BIAS
+CASPIAN_SURFACE = -27.5
 
 
 def log(*a):
@@ -137,10 +142,128 @@ def ocean_mask(z):
     return np.isin(lab, list(keep))
 
 
-def flood_levels(z, ocean, factor=2):
-    """Priority-flood (morphological reconstruction by erosion) seeded from the
-    ocean: the lowest water level at which each cell connects to the sea.
-    Runs on a min-pooled grid (keeps narrow straits open), lon-wrapped."""
+def lake_mask(z, ocean, path):
+    """Present-day lakes and inland seas, which stay water at every level.
+    Natural Earth 10m lakes (public domain) plus the Caspian, which Natural
+    Earth leaves out: ETOPO stores its bed, so take the connected basin
+    below its surface."""
+    nr, nc = z.shape
+    mask = np.zeros(z.shape, bool)
+    if path:
+        from rasterio.features import rasterize
+        from rasterio.transform import from_origin
+
+        with open(path) as fh:
+            gj = json.load(fh)
+        shapes = [(f["geometry"], 1) for f in gj["features"] if f.get("geometry")]
+        mask = rasterize(
+            shapes, out_shape=z.shape, transform=from_origin(-180, 90, 360 / nc, 180 / nr), fill=0, dtype="uint8"
+        ).astype(bool)
+        log(f"Natural Earth lakes: {len(shapes)} polygons")
+    # Caspian window 36-48N, 45-56E
+    r0, r1 = int((90 - 48) / 180 * nr), int((90 - 36) / 180 * nr)
+    c0, c1 = int((45 + 180) / 360 * nc), int((56 + 180) / 360 * nc)
+    win = z[r0:r1, c0:c1] < CASPIAN_SURFACE
+    lab, _ = ndimage.label(win, structure=np.ones((3, 3), bool))
+    seed = lab[int((90 - 42) / 180 * nr) - r0, int((51 + 180) / 360 * nc) - c0]
+    if seed:
+        mask[r0:r1, c0:c1] |= lab == seed
+    mask &= ~ocean
+    return mask
+
+
+def _priority_flood_numba():
+    """Priority-Flood (Barnes et al. 2014, with the plain-queue speed-up) on
+    the full grid, lon-wrapped, 8-connected. Seeds are the ocean cells; each
+    land cell gets the lowest water level at which it joins the sea."""
+    import heapq
+
+    from numba import njit
+
+    @njit
+    def run(z, ocean):
+        nr, nc = z.shape
+        out = np.empty_like(z)
+        closed = np.zeros(z.shape, np.bool_)
+        heap = [(np.float32(0.0), np.int64(0))]
+        heap.pop()
+        pit = np.empty(1 << 20, np.int64)  # ring buffer for the plain queue
+        head = 0
+        tail = 0
+        cap = pit.shape[0]
+        for r in range(nr):
+            for c in range(nc):
+                if ocean[r, c]:
+                    out[r, c] = z[r, c]
+                    closed[r, c] = True
+        # seed the heap with ocean cells that touch land
+        for r in range(nr):
+            for c in range(nc):
+                if not ocean[r, c]:
+                    continue
+                coast = False
+                for dr in range(-1, 2):
+                    rr = r + dr
+                    if rr < 0 or rr >= nr:
+                        continue
+                    for dc in range(-1, 2):
+                        cc = (c + dc) % nc
+                        if not ocean[rr, cc]:
+                            coast = True
+                if coast:
+                    heapq.heappush(heap, (z[r, c], np.int64(r * nc + c)))
+        while len(heap) > 0 or head != tail:
+            if head != tail:
+                idx = pit[head]
+                head = (head + 1) % cap
+            else:
+                _, idx = heapq.heappop(heap)
+            r = idx // nc
+            c = idx % nc
+            level = out[r, c]
+            for dr in range(-1, 2):
+                rr = r + dr
+                if rr < 0 or rr >= nr:
+                    continue
+                for dc in range(-1, 2):
+                    if dr == 0 and dc == 0:
+                        continue
+                    cc = (c + dc) % nc
+                    if closed[rr, cc]:
+                        continue
+                    closed[rr, cc] = True
+                    zz = z[rr, cc]
+                    n = np.int64(rr * nc + cc)
+                    if zz <= level:
+                        out[rr, cc] = level
+                        nxt = (tail + 1) % cap
+                        if nxt == head:  # queue full: fall back to the heap
+                            heapq.heappush(heap, (level, n))
+                        else:
+                            pit[tail] = n
+                            tail = nxt
+                    else:
+                        out[rr, cc] = zz
+                        heapq.heappush(heap, (zz, n))
+        return out
+
+    return run
+
+
+def flood_levels(z, ocean, factor=1):
+    """Lowest sea level at which each cell connects to the ocean.
+    Full resolution with numba when available; otherwise morphological
+    reconstruction on a min-pooled grid (factor >= 2, needs ~10 GB at 1')."""
+    if factor == 1:
+        try:
+            run = _priority_flood_numba()
+        except ImportError:
+            run = None
+            log("numba not installed: falling back to 2x pooled reconstruction")
+        if run is not None:
+            log(f"numba priority-flood on {z.shape} ...")
+            return run(z.astype(np.float32), ocean)
+    factor = max(factor, 2)
     nr, nc = z.shape
     zr = z.reshape(nr // factor, factor, nc // factor, factor).min(axis=(1, 3))
     orr = ocean.reshape(nr // factor, factor, nc // factor, factor).any(axis=(1, 3))
@@ -149,9 +272,10 @@ def flood_levels(z, ocean, factor=2):
     op = np.concatenate([orr[:, -pad:], orr, orr[:, :pad]], axis=1)
     mask = np.maximum(zp, -11000).astype(np.float32)
     seed = np.where(op, mask, mask.max()).astype(np.float32)
+    del zp, op
     log(f"reconstruction on {mask.shape} ...")
     f = reconstruction(seed, mask, method="erosion")[:, pad:-pad]
-    # back to full resolution, never below own elevation
+    del seed, mask
     f = np.repeat(np.repeat(f, factor, axis=0), factor, axis=1)
     full = np.maximum(f, z)
     full[ocean] = z[ocean]
@@ -270,6 +394,8 @@ def main():
     ap.add_argument("--bed", required=True)
     ap.add_argument("--out", default="public/data")
     ap.add_argument("--size", type=int, default=4096)
+    ap.add_argument("--lakes", help="Natural Earth ne_10m_lakes.geojson (optional)")
+    ap.add_argument("--flood-factor", type=int, default=1, help="pool the flood grid by this factor (memory)")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     check_proj()
@@ -294,8 +420,12 @@ def main():
 
     log("ocean mask")
     ocean = ocean_mask(z)
+    log("lakes")
+    lakes = lake_mask(z, ocean, args.lakes)
+    log(f"lake cells: {lakes.sum()}")
     log("flood levels")
-    flood = flood_levels(z, ocean)
+    flood = flood_levels(z, ocean, args.flood_factor)
+    flood[lakes] = LAKE
 
     # ---------------- statistics (unprojected, cos-lat weighted) ----------
     log("statistics")
@@ -313,7 +443,7 @@ def main():
         cum = np.cumsum(h[::-1])[::-1]  # cum[k] = weight with idx+1 >= k
         return (cum[1 : len(levels) + 1] / total)
 
-    above_raw = frac_above(z)
+    above_raw = frac_above(np.minimum(z, flood))  # lakes count as water
     above_flood = frac_above(flood)
     above = np.where(levels < 0, above_raw, above_flood)
     i0 = -lo_level
@@ -334,6 +464,7 @@ def main():
     terrain_i = np.empty((N, N), np.float32)
     flood_m = np.empty((N, N), np.float32)
     ocean_m = np.empty((N, N), bool)
+    lake_m = np.empty((N, N), bool)
     # light prefilter so 1.85 km cells aren't aliased into ~5.8 km map pixels
     zs = ndimage.gaussian_filter(z, 0.8, mode=("nearest", "wrap"))
     chunk = 256
@@ -346,11 +477,13 @@ def main():
         fl = nearest_global(flood, lon, lat)
         oc = nearest_global(ocean, lon, lat)
         ocean_m[r0 : r0 + chunk] = oc
+        lake_m[r0 : r0 + chunk] = nearest_global(lakes, lon, lat)
         flood_m[r0 : r0 + chunk] = fl
     del zs
     e = terrain_e
     # keep flood consistent with the (smoothed) elevation actually displayed
     flood_m = np.where(ocean_m, np.minimum(e, flood_m), np.maximum(e, flood_m))
+    flood_m[lake_m] = LAKE
 
     log("area scale")
     # true area per cell from spherical quads on a fine vertex grid
@@ -383,7 +516,8 @@ def main():
 
     def write_set(n, e_, f_, i_, d_):
         er, eg = pack16(e_)
-        fr, fg = pack16(np.maximum(np.round(f_) - np.round(e_), 0) - OFFSET)
+        diff = np.where(f_ <= LAKE, LAKE - np.round(e_), np.maximum(np.round(f_) - np.round(e_), 0))
+        fr, fg = pack16(diff + FLOOD_BIAS - OFFSET)
         save_rgb(os.path.join(args.out, f"terrain_{n}.png"), er, eg, np.round(i_ * 255).astype(np.uint8))
         save_rgb(os.path.join(args.out, f"flood_{n}.png"), fr, fg, d_)
 
@@ -393,8 +527,10 @@ def main():
     pool = lambda v: v.reshape(h, 2, h, 2).mean(axis=(1, 3))
     e2 = pool(e)
     # a coarse cell floods once its first quarter would; never below its own mean elevation
-    f2 = np.maximum(flood_m.reshape(h, 2, h, 2).min(axis=(1, 3)), e2)
+    nonlake = np.where(lake_m, np.inf, flood_m).reshape(h, 2, h, 2).min(axis=(1, 3))
+    f2 = np.maximum(np.where(np.isfinite(nonlake), nonlake, e2), e2)
     f2 = np.where(pool(ocean_m.astype(np.float32)) >= 0.5, np.minimum(f2, e2), f2)
+    f2 = np.where(pool(lake_m.astype(np.float32)) >= 0.5, LAKE, f2)
     write_set(h, e2, f2, pool(terrain_i), np.round(pool(dist_b.astype(np.float32))).astype(np.uint8))
 
     stats = {
@@ -418,7 +554,9 @@ def main():
         "halfWidth": HALF,
         "sizes": [N, h],
         "elevationOffset": OFFSET,
-        "floodEncoding": "flood - elevation",
+        "floodEncoding": "flood - elevation + floodBias; lakes have flood = lakeLevel",
+        "floodBias": FLOOD_BIAS,
+        "lakeLevel": LAKE,
         "distUnitKm": DIST_UNIT_KM,
         "lonlatGrid": GRID,
         "areaGrid": 512,

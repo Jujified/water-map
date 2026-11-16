@@ -16,6 +16,7 @@ precision highp int;
 uniform sampler2D uTerrain;
 uniform sampler2D uFlood;
 uniform float uOffset;
+uniform float uFloodBias;
 uniform float uDistUnit;
 uniform int uSize;
 out vec4 outColor;
@@ -25,7 +26,7 @@ void main(){
   vec3 t = texelFetch(uTerrain, p, 0).rgb * 255.0;
   vec3 f = texelFetch(uFlood, p, 0).rgb * 255.0;
   float elev = t.r * 256.0 + t.g - uOffset;
-  float flood = elev + f.r * 256.0 + f.g;   // stored as flood - elevation
+  float flood = elev + f.r * 256.0 + f.g - uFloodBias;   // stored as flood - elevation + bias
   outColor = vec4(elev, flood, t.b / 255.0, f.b * uDistUnit);
 }
 `;
@@ -38,8 +39,11 @@ float vnoise(vec2 p){
 }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for(int i=0;i<3;i++){ s += a*vnoise(p); p = p*2.03 + 17.1; a *= 0.5; } return s; }
 // water test shared by both modes: rises use the priority-flood level,
-// drops below 0 m use raw elevation.
-float waterValue(vec4 d, float level){ return level >= 0.0 ? d.g : d.r; }
+// drops below 0 m use raw elevation. Present-day lakes carry flood = -11000,
+// so min(elevation, flood) keeps them wet when the sea drops too.
+float waterValue(vec4 d, float level){ return level >= 0.0 ? d.g : min(d.r, d.g); }
+// 1 inside present-day lakes (flood far below the ground), 0 elsewhere
+float lakeness(vec4 d){ return clamp((d.r - d.g - 2.0) / 60.0, 0.0, 1.0); }  // ocean: g == r, land: g >= r
 `;
 
 // ---------------------------------------------------------------------------
@@ -120,7 +124,8 @@ void main(){
   float h = elev - uLevel;
   vec3 land = landRamp(max(h, 0.0));
   land = mix(land, vec3(0.97, 0.975, 0.985), smoothstep(0.35, 0.8, d.b));
-  vec3 sea = waterRamp(max(-h, 0.0));
+  float lake = lakeness(d);
+  vec3 sea = mix(waterRamp(max(-h, 0.0)), waterRamp(40.0), lake);
   vec3 col = mix(land * clamp(mix(1.0, shade, 0.85), 0.45, 1.35),
                  sea * clamp(mix(1.0, shade, 0.55), 0.7, 1.2), water);
 
@@ -131,7 +136,8 @@ void main(){
   float dist = d.a + nz;
   float landA = 1.0 - smoothstep(60.0, 300.0, dist);
   float seaA = 1.0 - smoothstep(600.0, 1000.0, dist);
-  float a = mix(landA, seaA, water);
+  landA = max(landA, smoothstep(0.35, 0.8, d.b)); // ice sheets stay white, as in the reference map
+  float a = mix(landA, seaA, water * (1.0 - lake)); // lakes fade with the land
   a = mix(1.0, a, uEdge);
   // warm the fringe toward the paper so the fade reads as pigment, not alpha
   col = mix(col, mix(col, uPaper, 0.35), (1.0 - a) * uEdge);
@@ -193,6 +199,7 @@ out vec3 vColor;
 out float vAlpha;
 ${glslRamp('landRamp', ABS_LAND)}
 ${glslRamp('waterRamp', ABS_WATER)}
+${common}
 
 vec3 sphereAt(vec2 uv){
   float g = float(uGrid - 1);
@@ -219,7 +226,8 @@ void main(){
   // colour: elevation relative to the water level
   float h = d.r - uLevel;
   vec3 land = landRamp(max(h, 0.0));
-  vec3 sea = waterRamp(max(-h, 0.0));
+  float lake = lakeness(d);
+  vec3 sea = mix(waterRamp(max(-h, 0.0)), waterRamp(40.0), lake);
   vec3 col = mix(land, sea, wet);
   // pointillist variation: most dots near the ramp, some lifted toward white,
   // some pushed darker
