@@ -6,7 +6,7 @@ export interface Meta {
   elevationOffset: number;
   floodBias?: number;
   lakeLevel?: number;
-  distUnitKm: number;
+  distUnit: number; // per-mille of map width
   lonlatGrid: number;
   areaGrid: number;
   source: string;

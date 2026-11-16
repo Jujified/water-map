@@ -52,7 +52,7 @@ export function decodeData(renderer: THREE.WebGLRenderer, d: MapData): THREE.Web
       uFlood: { value: flood },
       uOffset: { value: d.meta.elevationOffset },
       uFloodBias: { value: d.meta.floodBias ?? 0 },
-      uDistUnit: { value: d.meta.distUnitKm },
+      uDistUnit: { value: d.meta.distUnit },
       uSize: { value: n },
     },
     depthTest: false,

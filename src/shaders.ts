@@ -132,10 +132,13 @@ void main(){
   col = mix(col, vec3(1.0), uGrat * graticule(vSphere));
 
   // dissolve land into paper with distance inland from today's ocean
-  float nz = (fbm(vUv * 34.0) - 0.5) * 150.0 + (fbm(vUv * 180.0) - 0.5) * 60.0;
+  // distance is per-mille of the map width, so compact continents near the
+  // centre (Africa, Australia) stay whole while the inflated interiors near
+  // the square's edges dissolve, as on the reference map
+  float nz = (fbm(vUv * 34.0) - 0.5) * 14.0 + (fbm(vUv * 180.0) - 0.5) * 5.0;
   float dist = d.a + nz;
-  float landA = 1.0 - smoothstep(60.0, 300.0, dist);
-  float seaA = 1.0 - smoothstep(600.0, 1000.0, dist);
+  float landA = 1.0 - smoothstep(36.0, 55.0, dist);
+  float seaA = 1.0 - smoothstep(70.0, 110.0, dist);
   landA = max(landA, smoothstep(0.35, 0.8, d.b)); // ice sheets stay white, as in the reference map
   float a = mix(landA, seaA, water * (1.0 - lake)); // lakes fade with the land
   a = mix(1.0, a, uEdge);
