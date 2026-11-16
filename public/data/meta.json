@@ -10,7 +10,8 @@
  "floodEncoding": "flood - elevation + floodBias; lakes have flood = lakeLevel",
  "floodBias": 32768,
  "lakeLevel": -11000.0,
- "distUnitKm": 4.0,
+ "distUnit": 1.0,
+ "distEncoding": "distance inland from today's ocean in per-mille of map width",
  "lonlatGrid": 513,
  "areaGrid": 512,
  "source": "ETOPO 2022 v1 60 arc-second (surface + bed), NOAA NCEI"

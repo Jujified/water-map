@@ -22,7 +22,10 @@ Outputs (all in Spilhaus map space, row 0 = top / +y, column 0 = left / -x):
                          compresses far better than the raw level; present-day
                          lakes have flood = -11000, i.e. always water),
                          B = distance inland
-                         from the present-day ocean in units of DIST_UNIT_KM
+                         from the present-day ocean, measured on the map, in
+                         per-mille of the map width (the reference map fades
+                         by map distance: Africa stays whole, inflated
+                         interiors near the square's edges dissolve)
   lonlat.bin        513x513 float32 (lon, lat) pairs at grid vertices
   area.bin          512x512 float32 relative true area per map cell (max = 1)
   stats.json        cumulative "fraction above water" table + hypsometric
@@ -44,7 +47,7 @@ from scipy import ndimage
 from skimage.morphology import reconstruction
 
 OFFSET = 11000  # metres added before uint16 packing
-DIST_UNIT_KM = 4.0
+DIST_UNIT = 1.0  # per-mille of map width per stored unit
 SPILHAUS = "+proj=spilhaus +R=6371008.8"
 GRID = 513  # lon/lat lookup vertices per side
 LAKE = -11000.0  # flood level marking present-day lakes (always water)
@@ -500,12 +503,8 @@ def main():
     area512.tofile(os.path.join(args.out, "area.bin"))
 
     log("edge distance")
-    # km per map pixel from local area scale
-    km_per_px_cell = np.sqrt(area_f.reshape(512, M // 512, 512, M // 512).sum(axis=(1, 3)) / (N / 512) ** 2) * 6371.0
-    km_per_px = np.kron(km_per_px_cell, np.ones((N // 512, N // 512), np.float32))
     dist_px = ndimage.distance_transform_edt(~ocean_m)
-    dist_km = dist_px * km_per_px
-    dist_b = np.clip(np.round(dist_km / DIST_UNIT_KM), 0, 255).astype(np.uint8)
+    dist_b = np.clip(np.round(dist_px / N * 1000.0 / DIST_UNIT), 0, 255).astype(np.uint8)
 
     log("lon/lat lookup grid")
     gxv = np.linspace(-HALF, HALF, GRID) * (1 - 1e-12)
@@ -557,7 +556,8 @@ def main():
         "floodEncoding": "flood - elevation + floodBias; lakes have flood = lakeLevel",
         "floodBias": FLOOD_BIAS,
         "lakeLevel": LAKE,
-        "distUnitKm": DIST_UNIT_KM,
+        "distUnit": DIST_UNIT,
+        "distEncoding": "distance inland from today's ocean in per-mille of map width",
         "lonlatGrid": GRID,
         "areaGrid": 512,
         "source": "ETOPO 2022 v1 60 arc-second (surface + bed), NOAA NCEI",
