@@ -114,7 +114,24 @@ try {
   await page.click('#z-reset');
   await settle(1);
   const z3 = await wm('zoom');
-  check('zoom buttons', z0 === 1 && Math.abs(z1 - 2) < 0.01 && Math.abs(z2 - 1) < 0.01 && z3 === 1, `${z0} → ${z1.toFixed(2)} → ${z2.toFixed(2)} → reset ${z3}`);
+  check('zoom buttons', z0 === 1 && Math.abs(z1 - 2) < 0.01 && Math.abs(z2 - 1) < 0.01 && Math.abs(z3 - 1) < 0.01, `${z0} → ${z1.toFixed(2)} → ${z2.toFixed(2)} → reset ${z3}`);
+
+  // globe button: fold the map onto the globe, spin it, unfold again
+  for (const mode of ['realistic', 'abstract']) {
+    await open(`mode=${mode}&level=0${mode === 'abstract' ? '&dots=300000' : ''}`);
+    await page.click('#z-globe');
+    await page.waitForFunction(() => window.__waterMap.globe() >= 1);
+    const box = await page.locator('#stage canvas').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 150, box.y + box.height / 2 + 40, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${OUT}globe-${mode}.png` });
+    await page.click('#z-globe');
+    await page.waitForFunction(() => window.__waterMap.globe() <= 0);
+    check(`globe button round trip (${mode})`, true, 'map → globe → map');
+  }
 
   // slider drag fps (software GL here, so this is a lower bound)
   for (const mode of ['realistic', 'abstract']) {

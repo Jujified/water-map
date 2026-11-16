@@ -76,6 +76,11 @@ async function main() {
   let playDir = 1;
   let introT = params.get('intro') === '0' || reducedMotion ? T_END : 0;
   let legendDirty = true;
+  // globe view: 0 = flat map, 1 = globe; animated toward globeTarget
+  let globeTarget = params.get('globe') === '1' ? 1 : 0;
+  let globeT = globeTarget;
+  let globeSpin = !reducedMotion;
+  const userQ = intro.finalQuat();
   // ?introAt=<s> freezes the intro at a given time (used for screenshots)
   const frozenIntro = params.has('introAt');
 
@@ -124,7 +129,25 @@ async function main() {
     $('play').setAttribute('aria-label', p ? 'Pause sweep' : 'Play sweep');
   }
 
+  function setGlobe(on: boolean) {
+    if (on && globeTarget === 0) {
+      userQ.copy(intro.finalQuat()); // start from the map's own orientation
+      globeSpin = !reducedMotion;
+      setPlaying(false);
+    }
+    globeTarget = on ? 1 : 0;
+    view.lockCenter = on;
+    view.animateTo(1, 0, 0, reducedMotion ? 0 : 0.5);
+    const b = $('z-globe');
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', on ? 'Map view' : 'Globe view');
+    b.title = on ? 'Back to the map (G)' : 'Globe view (G)';
+    document.body.classList.toggle('globe', on);
+  }
+
   function startIntro() {
+    if (globeTarget) setGlobe(false);
+    globeT = 0;
     introT = reducedMotion ? T_END : 0;
     view.reset();
     view.enabled = introT >= T_END;
@@ -158,6 +181,18 @@ async function main() {
   $('z-in').addEventListener('click', zoomIn);
   $('z-out').addEventListener('click', zoomOut);
   $('z-reset').addEventListener('click', zoomReset);
+  $('z-globe').addEventListener('click', () => view.enabled && setGlobe(globeTarget === 0));
+  // one-finger drag spins the globe instead of panning
+  view.onDrag = (dx, dy) => {
+    if (globeTarget === 0 && globeT <= 0) return false;
+    if (globeT < 1) return true;
+    const k = 1 / (view.pxPerUnit() * real.material.uniforms.uRadius.value);
+    const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * k);
+    const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * k);
+    userQ.premultiply(qx).premultiply(qy);
+    globeSpin = false;
+    return true;
+  };
   function updateZoomButtons() {
     const z = view.targetZoom();
     $<HTMLButtonElement>('z-in').disabled = z >= 40;
@@ -173,6 +208,7 @@ async function main() {
     else if (e.key === '+' || e.key === '=') zoomIn();
     else if (e.key === '-' || e.key === '_') zoomOut();
     else if (e.key === '0') zoomReset();
+    else if ((e.key === 'g' || e.key === 'G') && view.enabled) setGlobe(globeTarget === 0);
   });
 
   let cursor: [number, number] | null = null;
@@ -184,7 +220,7 @@ async function main() {
 
   function updateCursor() {
     const el = $('r-cursor');
-    if (!cursor || introT < T_END) {
+    if (!cursor || introT < T_END || globeT > 0) {
       el.textContent = '—';
       return;
     }
@@ -215,6 +251,10 @@ async function main() {
   modeT = mode;
   startIntro();
   if (params.get('intro') === '0') introT = T_END;
+  if (params.get('globe') === '1') {
+    setGlobe(true);
+    globeT = 1; // start on the globe (no animation) when asked by URL
+  }
   if (frozenIntro) introT = Math.min(T_END - 1e-3, Number(params.get('introAt')) || 0);
 
   // ---------------- loop ----------------
@@ -241,7 +281,16 @@ async function main() {
     // intro
     const inIntro = introT < T_END;
     if (inIntro && !frozenIntro) introT = Math.min(T_END, introT + dt);
-    const f = intro.frame(introT);
+    if (!inIntro) {
+      const rate = reducedMotion ? 100 : 1 / 1.6;
+      globeT += Math.sign(globeTarget - globeT) * Math.min(Math.abs(globeTarget - globeT), dt * rate);
+      if (globeT >= 1 && globeSpin) {
+        // slow eastward spin about Earth's axis as seen on screen
+        const north = new THREE.Vector3(0, 0, 1).applyQuaternion(userQ);
+        userQ.premultiply(new THREE.Quaternion().setFromAxisAngle(north, dt * 0.12));
+      }
+    }
+    const f = inIntro || globeT <= 0 ? intro.frame(introT) : intro.globe(globeT, userQ);
     if (inIntro && introT >= T_END) {
       document.body.classList.remove('intro');
       view.enabled = true;
@@ -302,7 +351,10 @@ async function main() {
     wasAbsVisible = abs.points.visible;
 
     bg.copy(bgPaper).lerp(bgUltra, modeT);
-    bg.lerp(bgSpace, 1 - f.bg);
+    // the globe view sits in space for Realistic; Abstract keeps its ultramarine
+    // ground so the gaps between land dots read the same as on the map
+    const inGlobe = !inIntro && globeT > 0;
+    bg.lerp(bgSpace, (1 - f.bg) * (inGlobe ? 1 - modeT : 1));
     renderer.setClearColor(bg, 1);
     document.body.style.background = `#${bg.getHexString()}`;
 
@@ -337,6 +389,7 @@ async function main() {
       fps: () => fps.value,
       above: () => fractionAbove(data.stats, level),
       zoom: () => view.zoom,
+      globe: () => globeT,
       isWater: (lon: number, lat: number) => isWaterAt(lon, lat),
       ready: true,
     },

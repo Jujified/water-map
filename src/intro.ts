@@ -58,6 +58,25 @@ export class Intro {
     return this.tilt.clone().multiply(q);
   }
 
+  /** Rotation that faces the projection centre to the camera, map-up = screen-up. */
+  finalQuat(): THREE.Quaternion {
+    return this.final.clone();
+  }
+
+  /**
+   * Globe view: g = 0 is the flat map, g = 1 the globe in the user's own
+   * orientation. The first part wraps the map back onto the sphere (with
+   * the aligned rotation, so it retraces the intro); the rest hands the
+   * rotation over to the user. Leaving runs the same path backwards.
+   */
+  globe(g: number, user: THREE.Quaternion): IntroFrame {
+    const wrap = ease(Math.min(1, g / 0.6));
+    const turn = ease(Math.max(0, (g - 0.6) / 0.4));
+    const q = this.final.clone().slerp(user, turn);
+    const rot = new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(q));
+    return { rot, morph: 1 - wrap, bg: 1 - wrap, edge: 1 - wrap, ui: 1 };
+  }
+
   frame(t: number): IntroFrame {
     let q: THREE.Quaternion;
     if (t < T_SPIN) q = this.spin(t);
