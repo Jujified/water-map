@@ -33,6 +33,10 @@
       <button id="z-out" class="icon" aria-label="Zoom out" title="Zoom out (−)">
         <svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
+      <button id="z-globe" class="icon" aria-label="Globe view" aria-pressed="false" title="Globe view (G)">
+        <svg id="globe-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="3.6" ry="8.5"/><path d="M3.5 12h17"/></svg>
+        <svg id="map-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 12h16M12 4v16" opacity=".55"/></svg>
+      </button>
       <button id="z-reset" class="icon" aria-label="Reset view" title="Reset view (0)">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
       </button>
@@ -92,7 +96,7 @@
         much of the planet lies at its elevation, so abyssal plains and lowlands get the biggest dots, and peaks and
         trenches the smallest.
       </p>
-      <p class="muted">Drag to pan. Scroll, pinch or use the + / − buttons to zoom, and the reset button (or 0) to fit the whole map.</p>
+      <p class="muted">Drag to pan. Scroll, pinch or use the + / − buttons to zoom, and the reset button (or 0) to fit the whole map. The globe button (or G) folds the map back onto the globe; drag to spin it.</p>
       <form method="dialog"><button>Close</button></form>
     </dialog>
 

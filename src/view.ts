@@ -10,6 +10,10 @@ export class View {
   height = 1;
   enabled = false;
   onChange?: () => void;
+  /** Return true to consume a one-finger drag (e.g. to spin the globe). */
+  onDrag?: (dx: number, dy: number) => boolean;
+  /** Zoom about the screen centre instead of the cursor, and disable panning. */
+  lockCenter = false;
   private anim: { from: [number, number, number]; to: [number, number, number]; t: number; dur: number } | null = null;
   private readonly tanHalf = Math.tan(THREE.MathUtils.degToRad(28 / 2));
 
@@ -64,6 +68,10 @@ export class View {
   }
 
   zoomAt(x: number, y: number, factor: number) {
+    if (this.lockCenter) {
+      x = this.width / 2;
+      y = this.height / 2;
+    }
     const k0 = this.pxPerUnit();
     const mx = this.cx + (x - this.width / 2) / k0;
     const my = this.cy - (y - this.height / 2) / k0;
@@ -138,6 +146,10 @@ export class View {
       const p = rel(e);
       const prev = pts.get(e.pointerId)!;
       if (pts.size === 1) {
+        if (this.onDrag?.(p.x - prev.x, p.y - prev.y)) {
+          pts.set(e.pointerId, p);
+          return;
+        }
         const k = this.pxPerUnit();
         this.cx -= (p.x - prev.x) / k;
         this.cy += (p.y - prev.y) / k;
