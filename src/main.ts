@@ -361,7 +361,9 @@ async function main() {
     renderer.render(scene, view.camera);
 
     if (legendDirty) {
-      legend.draw(level, modeT > 0.5 ? 1 : 0);
+      // use the selected mode, not the crossfade value: the redraw happens on the
+      // first frame after the switch, when the fade has barely started
+      legend.draw(level, mode);
       legendDirty = false;
     }
     updateCursor();
