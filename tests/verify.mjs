@@ -116,6 +116,31 @@ try {
   const z3 = await wm('zoom');
   check('zoom buttons', z0 === 1 && Math.abs(z1 - 2) < 0.01 && Math.abs(z2 - 1) < 0.01 && Math.abs(z3 - 1) < 0.01, `${z0} → ${z1.toFixed(2)} → ${z2.toFixed(2)} → reset ${z3}`);
 
+  // legend follows a mode switch without touching the slider
+  {
+    await open('mode=realistic&level=0&dots=300000');
+    // mean colour of the land half of the legend (above the 0 m line)
+    const legendLand = () =>
+      page.evaluate(() => {
+        const c = document.querySelector('.legend-canvas');
+        const px = c.getContext('2d').getImageData(0, 0, c.width, Math.floor(c.height * 0.5)).data;
+        let r = 0, g = 0, n = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 200) { r += px[i]; g += px[i + 1]; n++; }
+        return { r: r / n, g: g / n };
+      });
+    const before = await legendLand();
+    await page.click('#m-abs');
+    await page.waitForTimeout(1500);
+    const abs = await legendLand();
+    await page.click('#m-real');
+    await page.waitForTimeout(1500);
+    const back = await legendLand();
+    // realistic land is green/yellow (g >= r - 40); abstract land is coral (r >> g)
+    const isReal = (c) => c.g > c.r - 40;
+    check('legend follows mode switch', isReal(before) && !isReal(abs) && isReal(back),
+      JSON.stringify([before, abs, back].map((c) => [Math.round(c.r), Math.round(c.g)])));
+  }
+
   // globe button: fold the map onto the globe, spin it, unfold again
   for (const mode of ['realistic', 'abstract']) {
     await open(`mode=${mode}&level=0${mode === 'abstract' ? '&dots=300000' : ''}`);
